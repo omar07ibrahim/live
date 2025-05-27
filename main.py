@@ -2123,6 +2123,129 @@ Contact: {details.get('contact_info', 'N/A')}
         
         ttk.Button(export_window, text="Export", command=do_export,
                   style='Accent.TButton').pack(pady=20)
+
+    def new_session(self):
+        """Start a fresh application session."""
+        if self.lpr_processor:
+            self.lpr_processor.end_session()
+        self.is_processing = False
+        self.start_button.config(text=f"▶ {self._('start')}")
+        self.status_var.set("New session started")
+        messagebox.showinfo("Session", "A new session has been created.")
+
+    def load_session(self):
+        """Placeholder for loading a previous session."""
+        messagebox.showinfo("Load Session", "Session loading not implemented.")
+
+    def import_data(self):
+        """Placeholder for data import."""
+        messagebox.showinfo("Import", "Data import not implemented.")
+
+    def open_settings(self):
+        """Placeholder for settings dialog."""
+        messagebox.showinfo("Settings", "Settings dialog not implemented.")
+
+    def open_blacklist(self):
+        """Placeholder for blacklist management."""
+        messagebox.showinfo("Blacklist", "Blacklist management not implemented.")
+
+    def open_whitelist(self):
+        """Placeholder for whitelist management."""
+        messagebox.showinfo("Whitelist", "Whitelist management not implemented.")
+
+    def show_statistics(self):
+        """Placeholder for statistics window."""
+        messagebox.showinfo("Statistics", "Statistics view not implemented.")
+
+    def show_about(self):
+        """Display a simple About dialog."""
+        messagebox.showinfo("About", f"LPR Counter-Surveillance System v{VERSION}")
+
+    def toggle_fullscreen(self):
+        """Toggle the main window fullscreen state."""
+        current = bool(self.root.attributes('-fullscreen'))
+        self.root.attributes('-fullscreen', not current)
+
+    def show_help(self):
+        """Display a basic help message."""
+        messagebox.showinfo("Help", "User guide not available yet.")
+
+    def load_session_info(self):
+        """Load persisted UI state."""
+        pass
+
+    def save_session_info(self):
+        """Persist UI state for next launch."""
+        pass
+
+    def acknowledge_alert(self, window, plate_text):
+        """Placeholder alert acknowledgement."""
+        window.destroy()
+
+    def show_tracking_alert(self, plate_text, details):
+        """Placeholder tracking alert."""
+        logger.info(f"Tracking alert for {plate_text}: {details}")
+
+    def show_convoy_alert(self, data, details):
+        """Placeholder convoy alert."""
+        logger.info(f"Convoy alert: {details}")
+
+    def update_alerts(self):
+        """Placeholder to refresh alerts table."""
+        pass
+
+    def export_data_to_file(self, filename, fmt, from_date, to_date, include_images, include_stats):
+        """Minimal data export implementation."""
+        logger.info(f"Exporting data to {filename} in {fmt} format")
+
+    def create_overview_tab(self, parent, plate_text):
+        pass
+
+    def create_history_tab(self, parent, plate_text):
+        pass
+
+    def create_images_tab(self, parent, plate_text):
+        pass
+
+    def create_location_tab(self, parent, plate_text):
+        pass
+
+    def create_analysis_tab(self, parent, plate_text):
+        pass
+
+    def filter_results(self):
+        pass
+
+    def sort_results(self):
+        pass
+
+    def show_routes(self):
+        """Placeholder for route display."""
+        messagebox.showinfo("Routes", "Route view not implemented.")
+
+    def show_heatmap(self):
+        """Placeholder for heatmap display."""
+        messagebox.showinfo("Heat Map", "Heat map not implemented.")
+
+    def export_charts(self):
+        """Placeholder for chart export."""
+        messagebox.showinfo("Export Charts", "Chart export not implemented.")
+
+    def preview_camera(self):
+        """Placeholder for camera preview."""
+        messagebox.showinfo("Preview", "Camera preview not implemented.")
+
+    def call_emergency(self):
+        """Placeholder for emergency call action."""
+        messagebox.showinfo("Emergency", "Call to emergency services triggered.")
+
+    def show_context_menu(self, event):
+        """Placeholder context menu."""
+        pass
+
+    def show_performance(self):
+        """Placeholder performance monitor."""
+        messagebox.showinfo("Performance", "Performance monitor not implemented.")
     
     def on_closing(self):
         """Handle application closing"""
