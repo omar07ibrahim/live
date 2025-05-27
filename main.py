@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Advanced Real-Time License Plate Recognition Counter-Surveillance System v2.0
+Advanced Real-Time License Plate Recognition Counter-Surveillance System v3.0
 Enhanced version with extended functionality and real video display
 """
 
@@ -55,8 +55,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Constants
-VERSION = "2.0"
-DATABASE_PATH = 'lpr_surveillance_v2.db'
+VERSION = "3.0"
+DATABASE_PATH = 'lpr_surveillance_v3.db'
 IMAGES_DIR = 'lpr_images'
 VIDEO_DIR = 'recorded_videos'
 EXPORT_DIR = 'exports'
@@ -270,6 +270,127 @@ class EnhancedDatabase:
         if encrypted_data:
             return self.cipher.decrypt(encrypted_data.encode()).decode()
         return None
+
+    def get_setting(self, name, default=None):
+        """Retrieve typed setting value"""
+        with self.get_connection() as conn:
+            row = conn.execute(
+                'SELECT setting_value, setting_type FROM application_settings WHERE setting_name = ?',
+                (name,)
+            ).fetchone()
+            if not row:
+                return default
+
+            value = row['setting_value']
+            stype = row['setting_type']
+
+            if stype == 'integer':
+                try:
+                    return int(value)
+                except ValueError:
+                    return default
+            if stype == 'boolean':
+                return str(value).lower() in ('1', 'true', 'yes')
+            return value
+
+    def set_setting(self, name, value, setting_type='string'):
+        """Insert or update application setting"""
+        with self.get_connection() as conn:
+            conn.execute(
+                '''INSERT INTO application_settings (setting_name, setting_value, setting_type)
+                   VALUES (?, ?, ?)
+                   ON CONFLICT(setting_name) DO UPDATE SET
+                     setting_value=excluded.setting_value,
+                     setting_type=excluded.setting_type''',
+                (name, str(value), setting_type),
+            )
+
+    def exec(self, query, params=()):
+        """Execute arbitrary SQL and return cursor"""
+        with self.get_connection() as conn:
+            cur = conn.execute(query, params)
+            conn.commit()
+            return cur
+
+    def is_blacklisted(self, plate_text):
+        """Check if plate exists in blacklist"""
+        with self.get_connection() as conn:
+            row = conn.execute(
+                'SELECT 1 FROM blacklist_plates WHERE plate_text = ?',
+                (plate_text,)
+            ).fetchone()
+            return row is not None
+
+    def get_blacklist_info(self, plate_text):
+        """Return blacklist record as dict if present"""
+        with self.get_connection() as conn:
+            row = conn.execute(
+                'SELECT * FROM blacklist_plates WHERE plate_text = ?',
+                (plate_text,),
+            ).fetchone()
+            return dict(row) if row else None
+
+    def is_whitelisted(self, plate_text):
+        """Check if plate exists in whitelist"""
+        with self.get_connection() as conn:
+            row = conn.execute(
+                'SELECT 1 FROM whitelist_plates WHERE plate_text = ?',
+                (plate_text,),
+            ).fetchone()
+            return row is not None
+
+    def find_canonical_plate(self, plate_text, threshold):
+        """Find canonical plate using Levenshtein distance"""
+        with self.get_connection() as conn:
+            rows = conn.execute(
+                'SELECT plate_text_canonical FROM recognized_plates'
+            ).fetchall()
+
+            for r in rows:
+                candidate = r['plate_text_canonical']
+                if Levenshtein.distance(plate_text, candidate) <= threshold:
+                    return candidate
+        return None
+
+    def log_alert(self, alert_type, plate_text, telegram_sent=False, details=None):
+        """Insert alert record"""
+        with self.get_connection() as conn:
+            conn.execute(
+                '''INSERT INTO alerts_log
+                   (alert_type, plate_text, alert_ts, telegram_sent, details)
+                   VALUES (?, ?, ?, ?, ?)''',
+                (
+                    alert_type,
+                    plate_text,
+                    datetime.datetime.now(),
+                    int(bool(telegram_sent)),
+                    json.dumps(details) if details else None,
+                ),
+            )
+
+    def update_tracking_status(self):
+        """Flag plates that are present longer than threshold."""
+        threshold = self.get_setting('tracking_threshold', DEFAULT_TRACKING_THRESHOLD)
+        suspicious = []
+        with self.get_connection() as conn:
+            rows = conn.execute(
+                'SELECT plate_text_canonical, first_appearance_ts, last_appearance_ts, '
+                'is_suspiciously_present FROM recognized_plates'
+            ).fetchall()
+
+            for row in rows:
+                first_ts = datetime.datetime.fromisoformat(row['first_appearance_ts'])
+                last_ts = datetime.datetime.fromisoformat(row['last_appearance_ts'])
+                duration = (last_ts - first_ts).total_seconds()
+
+                if duration >= threshold and not row['is_suspiciously_present']:
+                    conn.execute(
+                        'UPDATE recognized_plates SET is_suspiciously_present = 1 WHERE plate_text_canonical = ?',
+                        (row['plate_text_canonical'],)
+                    )
+                    suspicious.append({'plate': row['plate_text_canonical'], 'duration': duration})
+
+        return suspicious
     
     def get_statistics(self):
         """Get comprehensive statistics"""
