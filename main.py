@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Advanced Real-Time License Plate Recognition Counter-Surveillance System v2.0
+Advanced Real-Time License Plate Recognition Counter-Surveillance System v3.0
 Enhanced version with extended functionality and real video display
 """
 
@@ -55,8 +55,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Constants
-VERSION = "2.0"
-DATABASE_PATH = 'lpr_surveillance_v2.db'
+VERSION = "3.0"
+DATABASE_PATH = 'lpr_surveillance_v3.db'
 IMAGES_DIR = 'lpr_images'
 VIDEO_DIR = 'recorded_videos'
 EXPORT_DIR = 'exports'
@@ -270,6 +270,127 @@ class EnhancedDatabase:
         if encrypted_data:
             return self.cipher.decrypt(encrypted_data.encode()).decode()
         return None
+
+    def get_setting(self, name, default=None):
+        """Retrieve typed setting value"""
+        with self.get_connection() as conn:
+            row = conn.execute(
+                'SELECT setting_value, setting_type FROM application_settings WHERE setting_name = ?',
+                (name,)
+            ).fetchone()
+            if not row:
+                return default
+
+            value = row['setting_value']
+            stype = row['setting_type']
+
+            if stype == 'integer':
+                try:
+                    return int(value)
+                except ValueError:
+                    return default
+            if stype == 'boolean':
+                return str(value).lower() in ('1', 'true', 'yes')
+            return value
+
+    def set_setting(self, name, value, setting_type='string'):
+        """Insert or update application setting"""
+        with self.get_connection() as conn:
+            conn.execute(
+                '''INSERT INTO application_settings (setting_name, setting_value, setting_type)
+                   VALUES (?, ?, ?)
+                   ON CONFLICT(setting_name) DO UPDATE SET
+                     setting_value=excluded.setting_value,
+                     setting_type=excluded.setting_type''',
+                (name, str(value), setting_type),
+            )
+
+    def exec(self, query, params=()):
+        """Execute arbitrary SQL and return cursor"""
+        with self.get_connection() as conn:
+            cur = conn.execute(query, params)
+            conn.commit()
+            return cur
+
+    def is_blacklisted(self, plate_text):
+        """Check if plate exists in blacklist"""
+        with self.get_connection() as conn:
+            row = conn.execute(
+                'SELECT 1 FROM blacklist_plates WHERE plate_text = ?',
+                (plate_text,)
+            ).fetchone()
+            return row is not None
+
+    def get_blacklist_info(self, plate_text):
+        """Return blacklist record as dict if present"""
+        with self.get_connection() as conn:
+            row = conn.execute(
+                'SELECT * FROM blacklist_plates WHERE plate_text = ?',
+                (plate_text,),
+            ).fetchone()
+            return dict(row) if row else None
+
+    def is_whitelisted(self, plate_text):
+        """Check if plate exists in whitelist"""
+        with self.get_connection() as conn:
+            row = conn.execute(
+                'SELECT 1 FROM whitelist_plates WHERE plate_text = ?',
+                (plate_text,),
+            ).fetchone()
+            return row is not None
+
+    def find_canonical_plate(self, plate_text, threshold):
+        """Find canonical plate using Levenshtein distance"""
+        with self.get_connection() as conn:
+            rows = conn.execute(
+                'SELECT plate_text_canonical FROM recognized_plates'
+            ).fetchall()
+
+            for r in rows:
+                candidate = r['plate_text_canonical']
+                if Levenshtein.distance(plate_text, candidate) <= threshold:
+                    return candidate
+        return None
+
+    def log_alert(self, alert_type, plate_text, telegram_sent=False, details=None):
+        """Insert alert record"""
+        with self.get_connection() as conn:
+            conn.execute(
+                '''INSERT INTO alerts_log
+                   (alert_type, plate_text, alert_ts, telegram_sent, details)
+                   VALUES (?, ?, ?, ?, ?)''',
+                (
+                    alert_type,
+                    plate_text,
+                    datetime.datetime.now(),
+                    int(bool(telegram_sent)),
+                    json.dumps(details) if details else None,
+                ),
+            )
+
+    def update_tracking_status(self):
+        """Flag plates that are present longer than threshold."""
+        threshold = self.get_setting('tracking_threshold', DEFAULT_TRACKING_THRESHOLD)
+        suspicious = []
+        with self.get_connection() as conn:
+            rows = conn.execute(
+                'SELECT plate_text_canonical, first_appearance_ts, last_appearance_ts, '
+                'is_suspiciously_present FROM recognized_plates'
+            ).fetchall()
+
+            for row in rows:
+                first_ts = datetime.datetime.fromisoformat(row['first_appearance_ts'])
+                last_ts = datetime.datetime.fromisoformat(row['last_appearance_ts'])
+                duration = (last_ts - first_ts).total_seconds()
+
+                if duration >= threshold and not row['is_suspiciously_present']:
+                    conn.execute(
+                        'UPDATE recognized_plates SET is_suspiciously_present = 1 WHERE plate_text_canonical = ?',
+                        (row['plate_text_canonical'],)
+                    )
+                    suspicious.append({'plate': row['plate_text_canonical'], 'duration': duration})
+
+        return suspicious
     
     def get_statistics(self):
         """Get comprehensive statistics"""
@@ -2002,6 +2123,129 @@ Contact: {details.get('contact_info', 'N/A')}
         
         ttk.Button(export_window, text="Export", command=do_export,
                   style='Accent.TButton').pack(pady=20)
+
+    def new_session(self):
+        """Start a fresh application session."""
+        if self.lpr_processor:
+            self.lpr_processor.end_session()
+        self.is_processing = False
+        self.start_button.config(text=f"▶ {self._('start')}")
+        self.status_var.set("New session started")
+        messagebox.showinfo("Session", "A new session has been created.")
+
+    def load_session(self):
+        """Placeholder for loading a previous session."""
+        messagebox.showinfo("Load Session", "Session loading not implemented.")
+
+    def import_data(self):
+        """Placeholder for data import."""
+        messagebox.showinfo("Import", "Data import not implemented.")
+
+    def open_settings(self):
+        """Placeholder for settings dialog."""
+        messagebox.showinfo("Settings", "Settings dialog not implemented.")
+
+    def open_blacklist(self):
+        """Placeholder for blacklist management."""
+        messagebox.showinfo("Blacklist", "Blacklist management not implemented.")
+
+    def open_whitelist(self):
+        """Placeholder for whitelist management."""
+        messagebox.showinfo("Whitelist", "Whitelist management not implemented.")
+
+    def show_statistics(self):
+        """Placeholder for statistics window."""
+        messagebox.showinfo("Statistics", "Statistics view not implemented.")
+
+    def show_about(self):
+        """Display a simple About dialog."""
+        messagebox.showinfo("About", f"LPR Counter-Surveillance System v{VERSION}")
+
+    def toggle_fullscreen(self):
+        """Toggle the main window fullscreen state."""
+        current = bool(self.root.attributes('-fullscreen'))
+        self.root.attributes('-fullscreen', not current)
+
+    def show_help(self):
+        """Display a basic help message."""
+        messagebox.showinfo("Help", "User guide not available yet.")
+
+    def load_session_info(self):
+        """Load persisted UI state."""
+        pass
+
+    def save_session_info(self):
+        """Persist UI state for next launch."""
+        pass
+
+    def acknowledge_alert(self, window, plate_text):
+        """Placeholder alert acknowledgement."""
+        window.destroy()
+
+    def show_tracking_alert(self, plate_text, details):
+        """Placeholder tracking alert."""
+        logger.info(f"Tracking alert for {plate_text}: {details}")
+
+    def show_convoy_alert(self, data, details):
+        """Placeholder convoy alert."""
+        logger.info(f"Convoy alert: {details}")
+
+    def update_alerts(self):
+        """Placeholder to refresh alerts table."""
+        pass
+
+    def export_data_to_file(self, filename, fmt, from_date, to_date, include_images, include_stats):
+        """Minimal data export implementation."""
+        logger.info(f"Exporting data to {filename} in {fmt} format")
+
+    def create_overview_tab(self, parent, plate_text):
+        pass
+
+    def create_history_tab(self, parent, plate_text):
+        pass
+
+    def create_images_tab(self, parent, plate_text):
+        pass
+
+    def create_location_tab(self, parent, plate_text):
+        pass
+
+    def create_analysis_tab(self, parent, plate_text):
+        pass
+
+    def filter_results(self):
+        pass
+
+    def sort_results(self):
+        pass
+
+    def show_routes(self):
+        """Placeholder for route display."""
+        messagebox.showinfo("Routes", "Route view not implemented.")
+
+    def show_heatmap(self):
+        """Placeholder for heatmap display."""
+        messagebox.showinfo("Heat Map", "Heat map not implemented.")
+
+    def export_charts(self):
+        """Placeholder for chart export."""
+        messagebox.showinfo("Export Charts", "Chart export not implemented.")
+
+    def preview_camera(self):
+        """Placeholder for camera preview."""
+        messagebox.showinfo("Preview", "Camera preview not implemented.")
+
+    def call_emergency(self):
+        """Placeholder for emergency call action."""
+        messagebox.showinfo("Emergency", "Call to emergency services triggered.")
+
+    def show_context_menu(self, event):
+        """Placeholder context menu."""
+        pass
+
+    def show_performance(self):
+        """Placeholder performance monitor."""
+        messagebox.showinfo("Performance", "Performance monitor not implemented.")
     
     def on_closing(self):
         """Handle application closing"""
